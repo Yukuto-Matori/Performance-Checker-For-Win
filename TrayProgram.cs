@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 using LibreHardwareMonitor.Hardware;
 using YamlDotNet.Serialization;
 
@@ -103,7 +104,7 @@ internal sealed class MonitoringSession : IDisposable
     private GuiReport? _report;
     private NetworkSnapshot? _previousNetwork;
     private DiskSnapshot? _previousDisk;
-    private Timer? _timer;
+    private System.Threading.Timer? _timer;
     private bool _started;
 
     public void Start()
@@ -130,7 +131,7 @@ internal sealed class MonitoringSession : IDisposable
 
             _started = true;
             CaptureSample();
-            _timer = new Timer(_ => CaptureSample(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+            _timer = new System.Threading.Timer(_ => CaptureSample(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         }
     }
 
