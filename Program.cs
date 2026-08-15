@@ -91,12 +91,7 @@ internal static class Program
         Console.WriteLine("Monitoring stopped.");
     }
 
-    private static void AddSample(
-        PerformanceReport report,
-        HardwareMonitor monitor,
-        ProcessTracker processTracker,
-        NetworkSnapshot previousNetwork,
-        DiskSnapshot previousDisk)
+    private static void AddSample(PerformanceReport report, HardwareMonitor monitor, ProcessTracker processTracker, NetworkSnapshot previousNetwork, DiskSnapshot previousDisk)
     {
         var networkNow = NetworkCollector.Capture();
         var diskNow = DiskCollector.Capture();
@@ -207,16 +202,8 @@ internal sealed class HardwareMonitor : IDisposable
         return new SensorSnapshot { Cpu = cpu, Gpu = gpus };
     }
 
-    private static float? Find(IHardware hardware, SensorType type, string contains)
-    {
-        return hardware.Sensors.FirstOrDefault(s => s.SensorType == type && s.Name.Contains(contains, StringComparison.OrdinalIgnoreCase))?.Value;
-    }
-
-    private static float? FindAny(IHardware hardware, SensorType type)
-    {
-        return hardware.Sensors.FirstOrDefault(s => s.SensorType == type)?.Value;
-    }
-
+    private static float? Find(IHardware hardware, SensorType type, string contains) => hardware.Sensors.FirstOrDefault(s => s.SensorType == type && s.Name.Contains(contains, StringComparison.OrdinalIgnoreCase))?.Value;
+    private static float? FindAny(IHardware hardware, SensorType type) => hardware.Sensors.FirstOrDefault(s => s.SensorType == type)?.Value;
     public void Dispose() => _computer.Close();
 }
 
@@ -232,28 +219,19 @@ internal static class HardwareCollector
 {
     public static HostInfo CollectHostInfo(HardwareMonitor monitor)
     {
-        var cpu = QueryCpu();
-        var gpus = QueryGpus();
-        var disks = QueryDisks();
-
         return new HostInfo
         {
             ComputerName = Environment.MachineName,
             Os = RuntimeInformation.OSDescription,
             OsArchitecture = RuntimeInformation.OSArchitecture.ToString(),
-            Cpu = cpu,
-            Gpus = gpus,
+            Cpu = QueryCpu(),
+            Gpus = QueryGpus(),
             Memory = new MemoryInfo { TotalBytes = MemoryCollector.GetTotalBytes() },
-            Disks = disks,
-            LogicalDrives = DriveInfo.GetDrives()
-                .Where(d => d.IsReady)
-                .Select(d => new LogicalDriveInfo
-                {
-                    Name = d.Name,
-                    FileSystem = d.DriveFormat,
-                    TotalBytes = d.TotalSize,
-                    FreeBytes = d.AvailableFreeSpace
-                }).ToList()
+            Disks = QueryDisks(),
+            LogicalDrives = DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => new LogicalDriveInfo
+            {
+                Name = d.Name, FileSystem = d.DriveFormat, TotalBytes = d.TotalSize, FreeBytes = d.AvailableFreeSpace
+            }).ToList()
         };
     }
 
@@ -261,13 +239,7 @@ internal static class HardwareCollector
     {
         using var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed FROM Win32_Processor");
         var item = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
-        return new CpuInfo
-        {
-            Name = item?["Name"]?.ToString(),
-            Cores = ConvertToInt(item?["NumberOfCores"]),
-            LogicalProcessors = ConvertToInt(item?["NumberOfLogicalProcessors"]),
-            MaxClockMHz = ConvertToInt(item?["MaxClockSpeed"])
-        };
+        return new CpuInfo { Name = item?["Name"]?.ToString(), Cores = ConvertToInt(item?["NumberOfCores"]), LogicalProcessors = ConvertToInt(item?["NumberOfLogicalProcessors"]), MaxClockMHz = ConvertToInt(item?["MaxClockSpeed"]) };
     }
 
     private static List<GpuInfo> QueryGpus()
@@ -275,10 +247,7 @@ internal static class HardwareCollector
         using var searcher = new ManagementObjectSearcher("SELECT Name, DriverVersion, AdapterRAM, PNPDeviceID FROM Win32_VideoController");
         return searcher.Get().Cast<ManagementObject>().Select(item => new GpuInfo
         {
-            Name = item["Name"]?.ToString(),
-            DriverVersion = item["DriverVersion"]?.ToString(),
-            VramBytes = ConvertToUInt64(item["AdapterRAM"]),
-            PnpDeviceId = item["PNPDeviceID"]?.ToString()
+            Name = item["Name"]?.ToString(), DriverVersion = item["DriverVersion"]?.ToString(), VramBytes = ConvertToUInt64(item["AdapterRAM"]), PnpDeviceId = item["PNPDeviceID"]?.ToString()
         }).ToList();
     }
 
@@ -287,12 +256,7 @@ internal static class HardwareCollector
         using var searcher = new ManagementObjectSearcher("SELECT Model, SerialNumber, InterfaceType, MediaType, Size, Status FROM Win32_DiskDrive");
         return searcher.Get().Cast<ManagementObject>().Select(item => new PhysicalDiskInfo
         {
-            Model = item["Model"]?.ToString(),
-            SerialNumber = item["SerialNumber"]?.ToString()?.Trim(),
-            InterfaceType = item["InterfaceType"]?.ToString(),
-            MediaType = item["MediaType"]?.ToString(),
-            SizeBytes = ConvertToUInt64(item["Size"]),
-            Status = item["Status"]?.ToString()
+            Model = item["Model"]?.ToString(), SerialNumber = item["SerialNumber"]?.ToString()?.Trim(), InterfaceType = item["InterfaceType"]?.ToString(), MediaType = item["MediaType"]?.ToString(), SizeBytes = ConvertToUInt64(item["Size"]), Status = item["Status"]?.ToString()
         }).ToList();
     }
 
@@ -302,53 +266,28 @@ internal static class HardwareCollector
 
 internal static class MemoryCollector
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX status);
-
-    public static ulong GetTotalBytes()
-    {
-        var status = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
-        return GlobalMemoryStatusEx(ref status) ? status.ullTotalPhys : 0;
-    }
-
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX status);
+    public static ulong GetTotalBytes() { var status = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() }; return GlobalMemoryStatusEx(ref status) ? status.ullTotalPhys : 0; }
     public static MemoryMetrics Capture()
     {
         var status = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
         if (!GlobalMemoryStatusEx(ref status)) return new MemoryMetrics();
-        return new MemoryMetrics
-        {
-            UsagePercent = status.dwMemoryLoad,
-            TotalBytes = status.ullTotalPhys,
-            AvailableBytes = status.ullAvailPhys,
-            UsedBytes = status.ullTotalPhys - status.ullAvailPhys
-        };
+        return new MemoryMetrics { UsagePercent = status.dwMemoryLoad, TotalBytes = status.ullTotalPhys, AvailableBytes = status.ullAvailPhys, UsedBytes = status.ullTotalPhys - status.ullAvailPhys };
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MEMORYSTATUSEX
+    [StructLayout(LayoutKind.Sequential)] private struct MEMORYSTATUSEX
     {
-        public uint dwLength;
-        public uint dwMemoryLoad;
-        public ulong ullTotalPhys;
-        public ulong ullAvailPhys;
-        public ulong ullTotalPageFile;
-        public ulong ullAvailPageFile;
-        public ulong ullTotalVirtual;
-        public ulong ullAvailVirtual;
-        public ulong ullAvailExtendedVirtual;
+        public uint dwLength; public uint dwMemoryLoad; public ulong ullTotalPhys; public ulong ullAvailPhys; public ulong ullTotalPageFile; public ulong ullAvailPageFile; public ulong ullTotalVirtual; public ulong ullAvailVirtual; public ulong ullAvailExtendedVirtual;
     }
 }
 
 internal sealed class ProcessTracker
 {
     private readonly Dictionary<int, (TimeSpan Cpu, DateTimeOffset Time)> _previous = new();
-
     public List<ProcessMetrics> Capture()
     {
         var now = DateTimeOffset.UtcNow;
         var logicalProcessors = Environment.ProcessorCount;
         var results = new List<ProcessMetrics>();
-
         foreach (var process in Process.GetProcesses())
         {
             try
@@ -358,28 +297,14 @@ internal sealed class ProcessTracker
                 if (_previous.TryGetValue(process.Id, out var previous))
                 {
                     var elapsed = (now - previous.Time).TotalSeconds;
-                    if (elapsed > 0)
-                        value = Math.Max(0, (cpu - previous.Cpu).TotalSeconds / elapsed / logicalProcessors * 100.0);
+                    if (elapsed > 0) value = Math.Max(0, (cpu - previous.Cpu).TotalSeconds / elapsed / logicalProcessors * 100.0);
                 }
                 _previous[process.Id] = (cpu, now);
-                results.Add(new ProcessMetrics
-                {
-                    Name = process.ProcessName,
-                    Pid = process.Id,
-                    CpuPercent = value,
-                    MemoryBytes = process.WorkingSet64
-                });
+                results.Add(new ProcessMetrics { Name = process.ProcessName, Pid = process.Id, CpuPercent = value, MemoryBytes = process.WorkingSet64 });
             }
-            catch
-            {
-                // Process may terminate between enumeration and inspection.
-            }
-            finally
-            {
-                process.Dispose();
-            }
+            catch { }
+            finally { process.Dispose(); }
         }
-
         return results.OrderByDescending(p => p.CpuPercent).Take(3).ToList();
     }
 }
@@ -388,27 +313,13 @@ internal static class NetworkCollector
 {
     public static NetworkSnapshot Capture()
     {
-        var interfaces = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(i => i.OperationalStatus == OperationalStatus.Up)
-            .Select(i => i.GetIPStatistics())
-            .ToList();
-        return new NetworkSnapshot
-        {
-            ReceivedBytes = interfaces.Sum(i => i.BytesReceived),
-            SentBytes = interfaces.Sum(i => i.BytesSent)
-        };
+        var interfaces = NetworkInterface.GetAllNetworkInterfaces().Where(i => i.OperationalStatus == OperationalStatus.Up).Select(i => i.GetIPStatistics()).ToList();
+        return new NetworkSnapshot { ReceivedBytes = interfaces.Sum(i => i.BytesReceived), SentBytes = interfaces.Sum(i => i.BytesSent) };
     }
-
     public static NetworkMetrics Calculate(NetworkSnapshot previous, NetworkSnapshot current)
     {
         var seconds = Math.Max(0.001, (current.Timestamp - previous.Timestamp).TotalSeconds);
-        return new NetworkMetrics
-        {
-            ReceiveBytesPerSec = Math.Max(0, current.ReceivedBytes - previous.ReceivedBytes) / seconds,
-            SendBytesPerSec = Math.Max(0, current.SentBytes - previous.SentBytes) / seconds,
-            TotalReceivedBytes = current.ReceivedBytes,
-            TotalSentBytes = current.SentBytes
-        };
+        return new NetworkMetrics { ReceiveBytesPerSec = Math.Max(0, current.ReceivedBytes - previous.ReceivedBytes) / seconds, SendBytesPerSec = Math.Max(0, current.SentBytes - previous.SentBytes) / seconds, TotalReceivedBytes = current.ReceivedBytes, TotalSentBytes = current.SentBytes };
     }
 }
 
@@ -417,13 +328,7 @@ internal sealed class NetworkSnapshot
     public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
     public long ReceivedBytes { get; set; }
     public long SentBytes { get; set; }
-
-    public void UpdateFrom(NetworkSnapshot other)
-    {
-        Timestamp = other.Timestamp;
-        ReceivedBytes = other.ReceivedBytes;
-        SentBytes = other.SentBytes;
-    }
+    public void UpdateFrom(NetworkSnapshot other) { Timestamp = other.Timestamp; ReceivedBytes = other.ReceivedBytes; SentBytes = other.SentBytes; }
 }
 
 internal static class DiskCollector
@@ -433,28 +338,10 @@ internal static class DiskCollector
         using var searcher = new ManagementObjectSearcher("SELECT Name, DiskReadBytesPerSec, DiskWriteBytesPerSec, PercentDiskTime FROM Win32_PerfFormattedData_PerfDisk_PhysicalDisk WHERE Name <> '_Total'");
         var disks = new List<DiskActivity>();
         foreach (ManagementObject item in searcher.Get())
-        {
-            disks.Add(new DiskActivity
-            {
-                Name = item["Name"]?.ToString(),
-                ReadBytesPerSec = ConvertToDouble(item["DiskReadBytesPerSec"]),
-                WriteBytesPerSec = ConvertToDouble(item["DiskWriteBytesPerSec"]),
-                BusyPercent = ConvertToDouble(item["PercentDiskTime"])
-            });
-        }
+            disks.Add(new DiskActivity { Name = item["Name"]?.ToString(), ReadBytesPerSec = ConvertToDouble(item["DiskReadBytesPerSec"]), WriteBytesPerSec = ConvertToDouble(item["DiskWriteBytesPerSec"]), BusyPercent = ConvertToDouble(item["PercentDiskTime"]) });
         return new DiskSnapshot { Disks = disks };
     }
-
-    public static DiskMetrics Calculate(DiskSnapshot previous, DiskSnapshot current)
-    {
-        return new DiskMetrics
-        {
-            ReadBytesPerSec = current.Disks.Sum(d => d.ReadBytesPerSec),
-            WriteBytesPerSec = current.Disks.Sum(d => d.WriteBytesPerSec),
-            BusyPercentMax = current.Disks.Count == 0 ? null : current.Disks.Max(d => d.BusyPercent)
-        };
-    }
-
+    public static DiskMetrics Calculate(DiskSnapshot previous, DiskSnapshot current) => new DiskMetrics { ReadBytesPerSec = current.Disks.Sum(d => d.ReadBytesPerSec), WriteBytesPerSec = current.Disks.Sum(d => d.WriteBytesPerSec), BusyPercentMax = current.Disks.Count == 0 ? null : current.Disks.Max(d => d.BusyPercent) };
     private static double ConvertToDouble(object? value) => value is null ? 0 : Convert.ToDouble(value);
 }
 
@@ -467,26 +354,20 @@ internal sealed class DiskSnapshot
 
 internal sealed class YamlLogger
 {
-    private const string AiComment = """# AI_README
-# この YAML は Windows PC の安定性・性能分析用ログです。
-# host は起動時に取得したハードウェア情報、samples は時系列計測値です。
-# CPU/GPU の temperature は摂氏、usage は概ね 0-100%、memory/disk/network は bytes 系です。
-# topProcesses は各サンプル時点で CPU 使用率の高い上位3プロセスです。
-# 値が null のセンサーは、そのPCまたは実行権限では取得できなかったことを意味します。
-# 異常調査では、CPU温度・CPU使用率・Top Process・RAM使用率・GPU/VRAM・Disk I/O の時間相関を確認してください。
-# 特に Intel 13/14世代 CPU の不安定性を疑う場合は、今後追加する WHEA-Logger / Application Error / Display / Disk / stornvme 等のイベント情報を重視してください。
-# 新旧PC比較では、同じ負荷・同じ時間帯・同じサンプリング間隔のログを比較してください。
-# このコメントは AI に貼り付けて分析する際の読み方を定義するためのものです。
-""";
+    private const string AiComment = "# AI_README\n" +
+        "# この YAML は Windows PC の安定性・性能分析用ログです。\n" +
+        "# host は起動時に取得したハードウェア情報、samples は時系列計測値です。\n" +
+        "# CPU/GPU の temperature は摂氏、usage は概ね 0-100%、memory/disk/network は bytes 系です。\n" +
+        "# topProcesses は各サンプル時点で CPU 使用率の高い上位3プロセスです。\n" +
+        "# 値が null のセンサーは、そのPCまたは実行権限では取得できなかったことを意味します。\n" +
+        "# 異常調査では、CPU温度・CPU使用率・Top Process・RAM使用率・GPU/VRAM・Disk I/O の時間相関を確認してください。\n" +
+        "# 特に Intel 13/14世代 CPU の不安定性を疑う場合は、WHEA-Logger / Application Error / Display / Disk / stornvme 等のイベント情報を重視してください。\n" +
+        "# 新旧PC比較では、同じ負荷・同じ時間帯・同じサンプリング間隔のログを比較してください。\n" +
+        "# このコメントは AI に貼り付けて分析する際の読み方を定義するためのものです。";
 
     private readonly string _path;
-    private readonly ISerializer _serializer = new SerializerBuilder()
-        .WithNamingConvention(CamelCaseNamingConvention.Instance)
-        .DisableAliases()
-        .Build();
-
+    private readonly ISerializer _serializer = new SerializerBuilder().WithNamingConvention(CamelCaseNamingConvention.Instance).DisableAliases().Build();
     public YamlLogger(string path) => _path = path;
-
     public async Task WriteAsync(PerformanceReport report)
     {
         var yaml = AiComment + Environment.NewLine + _serializer.Serialize(report);
@@ -511,19 +392,8 @@ internal static class SummaryCollector
             DiskWriteMaxBytesPerSec = Max(samples.Select(s => (double?)s.Disk.WriteBytesPerSec))
         };
     }
-
-    private static double? Average(IEnumerable<float?> values)
-    {
-        var x = values.Where(v => v.HasValue).Select(v => (double)v!.Value).ToArray();
-        return x.Length == 0 ? null : x.Average();
-    }
-
-    private static double? Max(IEnumerable<double?> values)
-    {
-        var x = values.Where(v => v.HasValue).Select(v => v!.Value).ToArray();
-        return x.Length == 0 ? null : x.Max();
-    }
-
+    private static double? Average(IEnumerable<float?> values) { var x = values.Where(v => v.HasValue).Select(v => (double)v!.Value).ToArray(); return x.Length == 0 ? null : x.Average(); }
+    private static double? Max(IEnumerable<double?> values) { var x = values.Where(v => v.HasValue).Select(v => v!.Value).ToArray(); return x.Length == 0 ? null : x.Max(); }
     private static double? Max(IEnumerable<float?> values) => Max(values.Select(v => v.HasValue ? (double?)v.Value : null));
 }
 
@@ -536,7 +406,6 @@ internal sealed class PerformanceReport
     public List<PerformanceSample> Samples { get; set; } = new();
     public SummaryInfo? Summary { get; set; }
 }
-
 internal sealed class HostInfo
 {
     public string? ComputerName { get; set; }
@@ -548,113 +417,18 @@ internal sealed class HostInfo
     public List<PhysicalDiskInfo> Disks { get; set; } = new();
     public List<LogicalDriveInfo> LogicalDrives { get; set; } = new();
 }
-
-internal sealed class CpuInfo
-{
-    public string? Name { get; set; }
-    public int? Cores { get; set; }
-    public int? LogicalProcessors { get; set; }
-    public int? MaxClockMHz { get; set; }
-}
-
-internal sealed class GpuInfo
-{
-    public string? Name { get; set; }
-    public string? DriverVersion { get; set; }
-    public ulong? VramBytes { get; set; }
-    public string? PnpDeviceId { get; set; }
-}
-
+internal sealed class CpuInfo { public string? Name { get; set; } public int? Cores { get; set; } public int? LogicalProcessors { get; set; } public int? MaxClockMHz { get; set; } }
+internal sealed class GpuInfo { public string? Name { get; set; } public string? DriverVersion { get; set; } public ulong? VramBytes { get; set; } public string? PnpDeviceId { get; set; } }
 internal sealed class MemoryInfo { public ulong TotalBytes { get; set; } }
-internal sealed class PhysicalDiskInfo
-{
-    public string? Model { get; set; }
-    public string? SerialNumber { get; set; }
-    public string? InterfaceType { get; set; }
-    public string? MediaType { get; set; }
-    public ulong? SizeBytes { get; set; }
-    public string? Status { get; set; }
-}
-internal sealed class LogicalDriveInfo
-{
-    public string? Name { get; set; }
-    public string? FileSystem { get; set; }
-    public long TotalBytes { get; set; }
-    public long FreeBytes { get; set; }
-}
-
-internal sealed class PerformanceSample
-{
-    public DateTimeOffset Timestamp { get; set; }
-    public CpuMetrics Cpu { get; set; } = new();
-    public MemoryMetrics Memory { get; set; } = new();
-    public List<ProcessMetrics> TopProcesses { get; set; } = new();
-    public NetworkMetrics Network { get; set; } = new();
-    public DiskMetrics Disk { get; set; } = new();
-    public List<GpuMetrics> Gpu { get; set; } = new();
-}
-
-internal sealed class CpuMetrics
-{
-    public float? UsagePercent { get; set; }
-    public float? TemperatureC { get; set; }
-    public float? PowerWatts { get; set; }
-}
-internal sealed class GpuMetrics
-{
-    public string? Name { get; set; }
-    public float? UsagePercent { get; set; }
-    public float? TemperatureC { get; set; }
-    public float? MemoryUsedPercent { get; set; }
-    public float? PowerWatts { get; set; }
-}
-internal sealed class MemoryMetrics
-{
-    public uint UsagePercent { get; set; }
-    public ulong TotalBytes { get; set; }
-    public ulong UsedBytes { get; set; }
-    public ulong AvailableBytes { get; set; }
-}
-internal sealed class ProcessMetrics
-{
-    public string? Name { get; set; }
-    public int Pid { get; set; }
-    public double CpuPercent { get; set; }
-    public long MemoryBytes { get; set; }
-}
-internal sealed class NetworkMetrics
-{
-    public double ReceiveBytesPerSec { get; set; }
-    public double SendBytesPerSec { get; set; }
-    public long TotalReceivedBytes { get; set; }
-    public long TotalSentBytes { get; set; }
-}
-internal sealed class DiskMetrics
-{
-    public double ReadBytesPerSec { get; set; }
-    public double WriteBytesPerSec { get; set; }
-    public double? BusyPercentMax { get; set; }
-}
-internal sealed class DiskActivity
-{
-    public string? Name { get; set; }
-    public double ReadBytesPerSec { get; set; }
-    public double WriteBytesPerSec { get; set; }
-    public double BusyPercent { get; set; }
-}
-internal sealed class SensorSnapshot
-{
-    public CpuMetrics Cpu { get; set; } = new();
-    public List<GpuMetrics> Gpu { get; set; } = new();
-}
-internal sealed class SummaryInfo
-{
-    public int SampleCount { get; set; }
-    public double? CpuUsageAverage { get; set; }
-    public double? CpuTemperatureMax { get; set; }
-    public double? MemoryUsageMax { get; set; }
-    public double? NetworkReceiveMaxBytesPerSec { get; set; }
-    public double? NetworkSendMaxBytesPerSec { get; set; }
-    public double? DiskReadMaxBytesPerSec { get; set; }
-    public double? DiskWriteMaxBytesPerSec { get; set; }
-}
+internal sealed class PhysicalDiskInfo { public string? Model { get; set; } public string? SerialNumber { get; set; } public string? InterfaceType { get; set; } public string? MediaType { get; set; } public ulong? SizeBytes { get; set; } public string? Status { get; set; } }
+internal sealed class LogicalDriveInfo { public string? Name { get; set; } public string? FileSystem { get; set; } public long TotalBytes { get; set; } public long FreeBytes { get; set; } }
+internal sealed class PerformanceSample { public DateTimeOffset Timestamp { get; set; } public CpuMetrics Cpu { get; set; } = new(); public MemoryMetrics Memory { get; set; } = new(); public List<ProcessMetrics> TopProcesses { get; set; } = new(); public NetworkMetrics Network { get; set; } = new(); public DiskMetrics Disk { get; set; } = new(); public List<GpuMetrics> Gpu { get; set; } = new(); }
+internal sealed class CpuMetrics { public float? UsagePercent { get; set; } public float? TemperatureC { get; set; } public float? PowerWatts { get; set; } }
+internal sealed class GpuMetrics { public string? Name { get; set; } public float? UsagePercent { get; set; } public float? TemperatureC { get; set; } public float? MemoryUsedPercent { get; set; } public float? PowerWatts { get; set; } }
+internal sealed class MemoryMetrics { public uint UsagePercent { get; set; } public ulong TotalBytes { get; set; } public ulong UsedBytes { get; set; } public ulong AvailableBytes { get; set; } }
+internal sealed class ProcessMetrics { public string? Name { get; set; } public int Pid { get; set; } public double CpuPercent { get; set; } public long MemoryBytes { get; set; } }
+internal sealed class NetworkMetrics { public double ReceiveBytesPerSec { get; set; } public double SendBytesPerSec { get; set; } public long TotalReceivedBytes { get; set; } public long TotalSentBytes { get; set; } }
+internal sealed class DiskMetrics { public double ReadBytesPerSec { get; set; } public double WriteBytesPerSec { get; set; } public double? BusyPercentMax { get; set; } }
+internal sealed class DiskActivity { public string? Name { get; set; } public double ReadBytesPerSec { get; set; } public double WriteBytesPerSec { get; set; } public double BusyPercent { get; set; } }
+internal sealed class SensorSnapshot { public CpuMetrics Cpu { get; set; } = new(); public List<GpuMetrics> Gpu { get; set; } = new(); }
+internal sealed class SummaryInfo { public int SampleCount { get; set; } public double? CpuUsageAverage { get; set; } public double? CpuTemperatureMax { get; set; } public double? MemoryUsageMax { get; set; } public double? NetworkReceiveMaxBytesPerSec { get; set; } public double? NetworkSendMaxBytesPerSec { get; set; } public double? DiskReadMaxBytesPerSec { get; set; } public double? DiskWriteMaxBytesPerSec { get; set; } }
