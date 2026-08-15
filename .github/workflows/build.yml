@@ -19,10 +19,16 @@ jobs:
       - name: Build
         run: dotnet build PerformanceChecker.csproj -c Release --no-restore
       - name: Publish portable win-x64
-        run: dotnet publish PerformanceChecker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+        run: dotnet publish PerformanceChecker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o package
+      - name: Add distribution scripts
+        shell: pwsh
+        run: |
+          Copy-Item install.ps1 package/install.ps1
+          Copy-Item uninstall.ps1 package/uninstall.ps1
+          Copy-Item README.md package/README.md
       - name: Package ZIP
         shell: pwsh
-        run: Compress-Archive -Path publish/* -DestinationPath Performance-Checker-For-Win-win-x64.zip -Force
+        run: Compress-Archive -Path package/* -DestinationPath Performance-Checker-For-Win-win-x64.zip -Force
       - name: Upload portable ZIP
         uses: actions/upload-artifact@v4
         with:
