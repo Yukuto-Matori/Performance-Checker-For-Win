@@ -36,4 +36,5 @@ jobs:
           name: Performance-Checker-For-Win-win-x64
           path: Performance-Checker-For-Win-win-x64.zip
 
-# Manual workflow_dispatch is also enabled for diagnostics.
+# Manual workflow_dispatch is enabled for diagnostics and release verification.
+# The push trigger intentionally covers feature/** so each source update gets a CI run.
