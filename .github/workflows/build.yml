@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'feature/**' ]
   pull_request:
     branches: [ main ]
 
@@ -18,3 +18,13 @@ jobs:
         run: dotnet restore PerformanceChecker.csproj
       - name: Build
         run: dotnet build PerformanceChecker.csproj -c Release --no-restore
+      - name: Publish portable win-x64
+        run: dotnet publish PerformanceChecker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+      - name: Package ZIP
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath Performance-Checker-For-Win-win-x64.zip -Force
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Performance-Checker-For-Win-win-x64
+          path: Performance-Checker-For-Win-win-x64.zip
