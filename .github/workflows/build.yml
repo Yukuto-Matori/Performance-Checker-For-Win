@@ -3,9 +3,14 @@ name: build
 on:
   push:
     branches: [ main, 'feature/**' ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -21,7 +26,7 @@ jobs:
         run: dotnet build PerformanceChecker.csproj -c Release --no-restore
       - name: Publish portable win-x64
         run: dotnet publish PerformanceChecker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o package
-      - name: Add distribution scripts
+      - name: Add distribution files
         shell: pwsh
         run: |
           Copy-Item install.ps1 package/install.ps1
@@ -30,11 +35,29 @@ jobs:
       - name: Package ZIP
         shell: pwsh
         run: Compress-Archive -Path package/* -DestinationPath Performance-Checker-For-Win-win-x64.zip -Force
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash Performance-Checker-For-Win-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Performance-Checker-For-Win-win-x64.zip" | Set-Content SHA256SUMS.txt -Encoding ascii
       - name: Upload portable ZIP
         uses: actions/upload-artifact@v4
         with:
           name: Performance-Checker-For-Win-win-x64
-          path: Performance-Checker-For-Win-win-x64.zip
+          path: |
+            Performance-Checker-For-Win-win-x64.zip
+            SHA256SUMS.txt
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            Performance-Checker-For-Win-win-x64.zip `
+            SHA256SUMS.txt `
+            --title "Performance-Checker-For-Win ${{ github.ref_name }}" `
+            --generate-notes
 
-# Manual workflow_dispatch is enabled for diagnostics and release verification.
-# The push trigger intentionally covers feature/** so each source update gets a CI run.
+# main / feature pushes run CI and upload an artifact.
+# v* tags additionally publish the ZIP as a GitHub Release.
