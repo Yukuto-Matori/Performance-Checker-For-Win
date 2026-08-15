@@ -35,3 +35,5 @@ jobs:
         with:
           name: Performance-Checker-For-Win-win-x64
           path: Performance-Checker-For-Win-win-x64.zip
+
+# Manual workflow_dispatch is also enabled for diagnostics.
