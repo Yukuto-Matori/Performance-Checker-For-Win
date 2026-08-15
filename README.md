@@ -124,3 +124,5 @@ GitHub Actionsではこのpublish結果をZIPとしてArtifact化する。
 - CPU thermal / power-limit / throttling 状態の強化
 - GPU詳細センサーの強化
 - SSD Healthを含むAI向け診断サマリー
+
+<!-- CI trigger test: 2026-08-15 -->
